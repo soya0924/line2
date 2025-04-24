@@ -1,0 +1,15 @@
+{
+  "name": "line2",
+  "version": "1.0.0",
+  "description": "Arduino controlled wave animation",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "ws": "^8.2.3",
+    "serialport": "^10.5.0",
+    "@serialport/parser-readline": "^10.5.0",
+    "express": "^4.17.1"
+  }
+}
