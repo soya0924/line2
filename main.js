@@ -8,6 +8,10 @@ document.addEventListener('DOMContentLoaded', function() {
     let rotationSpeed = 0.02;
     let targetRotationSpeed = 0.02;
     let time = 0;
+    let speedTransitionPhase = 0;  // 用於控制速度變化的相位
+    const MIN_SPEED = 0.0005;      // 最小速度
+    const MAX_SPEED = 0.08;        // 最大速度
+    const SPEED_CYCLE_DURATION = 3; // 完整循環的時間（秒）
     
     const waves = {
         wave1: {
@@ -28,9 +32,12 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     };
 
-    // 平滑過渡函數
     function lerp(start, end, factor) {
         return start + (end - start) * factor;
+    }
+
+    function easeInOutCubic(x) {
+        return x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
     }
 
     async function connectToArduino() {
@@ -54,8 +61,23 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
                 const potValue = parseInt(value);
                 if (!isNaN(potValue)) {
-                    // 轉換電位器值為目標旋轉速度，並增加速度範圍
-                    targetRotationSpeed = 0.005 + (potValue / 1023) * 0.15;
+                    // 使用電阻值來影響速度循環的速率
+                    const cycleSpeedMultiplier = 1 + (potValue / 1023) * 2; // 範圍從 1 到 3
+                    speedTransitionPhase += 0.016 / SPEED_CYCLE_DURATION * cycleSpeedMultiplier; // 假設 60fps
+                    
+                    if (speedTransitionPhase >= 1) {
+                        speedTransitionPhase = 0;
+                    }
+
+                    // 使用 easeInOutCubic 來創造更自然的速度變化
+                    const cyclicValue = easeInOutCubic(Math.sin(speedTransitionPhase * Math.PI * 2) * 0.5 + 0.5);
+                    
+                    // 在接近最小速度時使用指數函數來創造更明顯的減速效果
+                    const speedRatio = cyclicValue < 0.3 
+                        ? Math.pow(cyclicValue / 0.3, 2) * 0.3 
+                        : cyclicValue;
+                    
+                    targetRotationSpeed = MIN_SPEED + (MAX_SPEED - MIN_SPEED) * speedRatio;
                 }
             }
         } catch (error) {
@@ -74,12 +96,14 @@ document.addEventListener('DOMContentLoaded', function() {
     function drawDNAWave() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         
-        // 平滑過渡到目標速度
+        // 使用更平滑的過渡效果
         rotationSpeed = lerp(rotationSpeed, targetRotationSpeed, 0.1);
 
-        // 更新水平偏移
-        waves.wave1.offsetX -= rotationSpeed * 50;  // 控制移動速度
-        waves.wave2.offsetX -= rotationSpeed * 50;
+        // 根據當前速度調整移動距離
+        const moveSpeedMultiplier = rotationSpeed < 0.01 ? 40 : 30;  // 慢速時增加移動係數
+        const moveSpeed = rotationSpeed * moveSpeedMultiplier;
+        waves.wave1.offsetX -= moveSpeed;
+        waves.wave2.offsetX -= moveSpeed;
 
         // 當完全移出畫面時重置位置
         if (waves.wave1.offsetX < -canvas.width) {
