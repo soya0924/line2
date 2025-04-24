@@ -6,24 +6,32 @@ document.addEventListener('DOMContentLoaded', function() {
     let port;
     let reader;
     let rotationSpeed = 0.02;
+    let targetRotationSpeed = 0.02;
     let time = 0;
     
     const waves = {
         wave1: {
-            amplitude: 60,
-            frequency: 0.02,
+            amplitude: 100,  // 增加基本振幅
+            frequency: 0.015,  // 降低頻率使動畫更柔和
             phase: 0,
             color: '#FF6B6B',
-            offsetY: -15
+            offsetY: -25,  // 增加偏移量
+            offsetX: 0  // 添加水平偏移
         },
         wave2: {
-            amplitude: 60,
-            frequency: 0.02,
+            amplitude: 100,  // 增加基本振幅
+            frequency: 0.015,  // 降低頻率使動畫更柔和
             phase: Math.PI,
             color: '#4ECDC4',
-            offsetY: 15
+            offsetY: 25,   // 增加偏移量
+            offsetX: 0  // 添加水平偏移
         }
     };
+
+    // 平滑過渡函數
+    function lerp(start, end, factor) {
+        return start + (end - start) * factor;
+    }
 
     async function connectToArduino() {
         try {
@@ -46,7 +54,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
                 const potValue = parseInt(value);
                 if (!isNaN(potValue)) {
-                    rotationSpeed = 0.01 + (potValue / 1023) * 0.09;
+                    // 轉換電位器值為目標旋轉速度，並增加速度範圍
+                    targetRotationSpeed = 0.005 + (potValue / 1023) * 0.15;
                 }
             }
         } catch (error) {
@@ -65,6 +74,19 @@ document.addEventListener('DOMContentLoaded', function() {
     function drawDNAWave() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         
+        // 平滑過渡到目標速度
+        rotationSpeed = lerp(rotationSpeed, targetRotationSpeed, 0.1);
+
+        // 更新水平偏移
+        waves.wave1.offsetX -= rotationSpeed * 50;  // 控制移動速度
+        waves.wave2.offsetX -= rotationSpeed * 50;
+
+        // 當完全移出畫面時重置位置
+        if (waves.wave1.offsetX < -canvas.width) {
+            waves.wave1.offsetX = 0;
+            waves.wave2.offsetX = 0;
+        }
+        
         Object.values(waves).forEach(wave => {
             ctx.beginPath();
             ctx.strokeStyle = wave.color;
@@ -73,50 +95,74 @@ document.addEventListener('DOMContentLoaded', function() {
             const path = new Path2D();
             let firstPoint = true;
 
-            for (let x = 0; x < canvas.width; x += 3) {
-                const baseY = Math.sin(x * wave.frequency + wave.phase + time) * wave.amplitude;
-                const rotationY = Math.sin(time * 0.8) * 40;
-                const rotationX = Math.cos(time * 0.8) * 15;
+            for (let x = 0; x < canvas.width * 2; x += 3) {  // 擴大繪製範圍
+                const waveAmplitude = wave.amplitude * (1 + Math.sin(time * 0.5) * 0.2);
+                const baseY = Math.sin(x * wave.frequency + wave.phase + time) * waveAmplitude;
+                const rotationY = Math.sin(time * 0.8) * 60;
                 
-                const y = baseY + rotationY + canvas.height / 2 + wave.offsetY;
-                const adjustedX = x + rotationX;
+                // 加入水平偏移計算
+                const adjustedX = x + wave.offsetX;
+                
+                // 只繪製在可見區域內的部分
+                if (adjustedX >= 0 && adjustedX <= canvas.width) {
+                    const y = baseY + rotationY + canvas.height / 2 + wave.offsetY;
 
-                if (firstPoint) {
-                    path.moveTo(adjustedX, y);
-                    firstPoint = false;
-                } else {
-                    const prevX = x - 3;
-                    const prevY = Math.sin(prevX * wave.frequency + wave.phase + time) * wave.amplitude +
-                                rotationY + canvas.height / 2 + wave.offsetY;
-                    const cpX = (adjustedX + prevX) / 2;
-                    path.quadraticCurveTo(cpX, prevY, adjustedX, y);
+                    if (firstPoint) {
+                        path.moveTo(adjustedX, y);
+                        firstPoint = false;
+                    } else {
+                        const prevX = x - 3 + wave.offsetX;
+                        const prevY = Math.sin((x - 3) * wave.frequency + wave.phase + time) * waveAmplitude +
+                                    rotationY + canvas.height / 2 + wave.offsetY;
+                        const cpX = (adjustedX + prevX) / 2;
+                        path.quadraticCurveTo(cpX, prevY, adjustedX, y);
+                    }
                 }
             }
             
             ctx.stroke(path);
 
-            for (let x = 0; x < canvas.width; x += 60) {
-                const y1 = Math.sin(x * waves.wave1.frequency + waves.wave1.phase + time) * waves.wave1.amplitude +
-                          Math.sin(time * 0.8) * 40 + canvas.height / 2 + waves.wave1.offsetY;
-                          
-                const y2 = Math.sin(x * waves.wave2.frequency + waves.wave2.phase + time) * waves.wave2.amplitude +
-                          Math.sin(time * 0.8) * 40 + canvas.height / 2 + waves.wave2.offsetY;
-
-                const adjustedX = x + Math.cos(time * 0.8) * 15;
-
-                ctx.beginPath();
-                ctx.strokeStyle = `rgba(168, 230, 207, 0.4)`;
-                ctx.lineWidth = 1;
+            // DNA 連接線和圓點
+            for (let x = 0; x < canvas.width * 2; x += 60) {  // 擴大繪製範圍
+                const adjustedX = x + waves.wave1.offsetX;
                 
-                const controlPoint = {
-                    x: adjustedX,
-                    y: (y1 + y2) / 2
-                };
-                
-                ctx.beginPath();
-                ctx.moveTo(adjustedX, y1);
-                ctx.quadraticCurveTo(controlPoint.x, controlPoint.y, adjustedX, y2);
-                ctx.stroke();
+                // 只繪製在可見區域內的部分
+                if (adjustedX >= 0 && adjustedX <= canvas.width) {
+                    const waveAmplitude = wave.amplitude * (1 + Math.sin(time * 0.5) * 0.2);
+                    const y1 = Math.sin(x * waves.wave1.frequency + waves.wave1.phase + time) * waveAmplitude +
+                              Math.sin(time * 0.8) * 60 + canvas.height / 2 + waves.wave1.offsetY;
+                              
+                    const y2 = Math.sin(x * waves.wave2.frequency + waves.wave2.phase + time) * waveAmplitude +
+                              Math.sin(time * 0.8) * 60 + canvas.height / 2 + waves.wave2.offsetY;
+
+                    // 繪製連接線
+                    ctx.beginPath();
+                    ctx.strokeStyle = `rgba(168, 230, 207, 0.4)`;
+                    ctx.lineWidth = 1;
+                    ctx.moveTo(adjustedX, y1);
+                    ctx.lineTo(adjustedX, y2);
+                    ctx.stroke();
+
+                    // 在連接線上添加跳動的圓點
+                    const numDots = 3; // 每條連接線上的圓點數量
+                    for (let i = 0; i < numDots; i++) {
+                        // 計算圓點在連接線上的位置（0-1之間）
+                        const dotPosition = (Math.sin(time * 3 + i * Math.PI * 2 / numDots) + 1) / 2;
+                        
+                        // 計算圓點的實際座標
+                        const dotX = adjustedX;
+                        const dotY = y1 + (y2 - y1) * dotPosition;
+                        
+                        // 計算圓點大小（添加跳動效果）
+                        const dotSize = 3 + Math.sin(time * 5 + i * Math.PI * 2 / numDots) * 1;
+                        
+                        // 繪製圓點
+                        ctx.beginPath();
+                        ctx.fillStyle = '#A8E6CF';
+                        ctx.arc(dotX, dotY, dotSize, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                }
             }
         });
 
